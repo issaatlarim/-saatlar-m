@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>İş Saatların</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0a0a0a;
+    color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    padding: 20px 14px 40px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .header button.nav {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px 12px;
+    line-height: 1;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin: 0;
+    color: #d9a679;
+  }
+  .backBtn {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+
+  /* Months grid */
+  .grid-months {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .month-card {
+    background: #141414;
+    border: 1px solid #232323;
+    border-left: 2px solid #a17353;
+    border-radius: 9px;
+    padding: 12px 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .month-card:active {
+    background: #1c1c1c;
+  }
+  .month-card .name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #f0f0f0;
+    margin-bottom: 4px;
+  }
+  .month-card .summary {
+    font-size: 11px;
+    color: #666;
+  }
+
+  /* Days list */
+  .day-list {
+    max-width: 480px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .day-row {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 7px;
+    padding: 5px 9px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .day-num {
+    width: 26px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #bd8762;
+    text-align: center;
+  }
+  .day-num .weekday {
+    display: block;
+    font-size: 8px;
+    font-weight: 400;
+    color: #4a4a4a;
+    margin-top: 0px;
+  }
+  .day-fields {
+    display: flex;
+    gap: 5px;
+    flex: 1;
+  }
+  .field { flex: 1; }
+  .field input {
+    width: 100%;
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #f0f0f0;
+    font-size: 12px;
+    padding: 3px 4px;
+    text-align: center;
+  }
+  .field input:focus {
+    outline: 1px solid #a17353;
+  }
+  .field .label {
+    font-size: 8px;
+    color: #555;
+    text-align: center;
+    margin-top: 1px;
+  }
+  .day-row.weekend {
+    border-color: #38324a;
+    background: #17151d;
+  }
+  .day-row.weekend .day-num {
+    color: #9285b8;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button class="backBtn" id="backBtn" style="display:none;">‹ Geri</button>
+  <button class="nav" id="prevBtn">‹</button>
+  <h1 id="titleLabel"></h1>
+  <button class="nav" id="nextBtn">›</button>
+</div>
+
+<div id="content"></div>
+
+<script>
+  // UI text stays in Azerbaijani; code/variables in English so other tools/AI can read it.
+  const MONTH_NAMES = ["Yanvar","Fevral","Mart","Aprel","May","İyun","İyul","Avqust","Sentyabr","Oktyabr","Noyabr","Dekabr"];
+  const WEEKDAY_LABELS = ["B.","Be.","Ça.","Ç.","C.","Ca.","Ş."];
+  const STORAGE_KEY = "workHoursData";
+
+  let currentYear = new Date().getFullYear();
+  let selectedMonth = null; // null = month list view, 0-11 = that month's days
+
+  function loadAllData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveAllData(all) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch (e) {
+      console.error("Storage error", e);
+    }
+  }
+
+  function getDayKey(year, monthIndex, day) {
+    return `${year}-${monthIndex}-${day}`;
+  }
+
+  function daysInMonth(year, monthIndex) {
+    return new Date(year, monthIndex + 1, 0).getDate();
+  }
+
+  function monthSummary(year, monthIndex) {
+    const all = loadAllData();
+    const totalDays = daysInMonth(year, monthIndex);
+    let totalMinutes = 0, hasData = false;
+    for (let d = 1; d <= totalDays; d++) {
+      const key = getDayKey(year, monthIndex, d);
+      const entry = all[key];
+      if (entry) {
+        const hours = parseFloat(entry.hours) || 0;
+        const minutes = parseFloat(entry.minutes) || 0;
+        if (entry.hours || entry.minutes) hasData = true;
+        totalMinutes += hours * 60 + minutes;
+      }
+    }
+    if (!hasData) return "—";
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return `${h} saat ${m} dəq`;
+  }
+
+  function render() {
+    const backBtn = document.getElementById("backBtn");
+    const titleLabel = document.getElementById("titleLabel");
+    const content = document.getElementById("content");
+    content.innerHTML = "";
+
+    if (selectedMonth === null) {
+      backBtn.style.display = "none";
+      titleLabel.textContent = currentYear;
+
+      const grid = document.createElement("div");
+      grid.className = "grid-months";
+
+      MONTH_NAMES.forEach((monthName, i) => {
+        const card = document.createElement("div");
+        card.className = "month-card";
+
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = monthName;
+
+        const summary = document.createElement("div");
+        summary.className = "summary";
+        summary.textContent = monthSummary(currentYear, i);
+
+        card.appendChild(name);
+        card.appendChild(summary);
+
+        card.addEventListener("click", () => {
+          selectedMonth = i;
+          render();
+        });
+
+        grid.appendChild(card);
+      });
+
+      content.appendChild(grid);
+    } else {
+      backBtn.style.display = "inline-block";
+      titleLabel.textContent = `${MONTH_NAMES[selectedMonth]} ${currentYear}`;
+
+      const list = document.createElement("div");
+      list.className = "day-list";
+
+      const totalDays = daysInMonth(currentYear, selectedMonth);
+      const all = loadAllData();
+
+      for (let d = 1; d <= totalDays; d++) {
+        const key = getDayKey(currentYear, selectedMonth, d);
+        const entry = all[key] || { hours: "", minutes: "" };
+        const weekdayIndex = new Date(currentYear, selectedMonth, d).getDay();
+        const isWeekend = weekdayIndex === 0 || weekdayIndex === 6;
+
+        const row = document.createElement("div");
+        row.className = "day-row" + (isWeekend ? " weekend" : "");
+
+        const dayNum = document.createElement("div");
+        dayNum.className = "day-num";
+        dayNum.innerHTML = `${d}<span class="weekday">${WEEKDAY_LABELS[weekdayIndex]}</span>`;
+
+        const fields = document.createElement("div");
+        fields.className = "day-fields";
+        fields.appendChild(makeField(key, "hours", entry.hours, "saat"));
+        fields.appendChild(makeField(key, "minutes", entry.minutes, "dəq"));
+
+        row.appendChild(dayNum);
+        row.appendChild(fields);
+        list.appendChild(row);
+      }
+
+      content.appendChild(list);
+    }
+  }
+
+  function makeField(dayKey, fieldKey, value, label) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.placeholder = "0";
+    input.value = value || "";
+
+    input.addEventListener("input", (e) => {
+      let v = e.target.value;
+      if (v !== "" && !/^\d{0,4}(\.\d{0,2})?$/.test(v)) {
+        e.target.value = value || "";
+        return;
+      }
+      const all = loadAllData();
+      const entry = all[dayKey] || { hours: "", minutes: "" };
+      entry[fieldKey] = v;
+      all[dayKey] = entry;
+      saveAllData(all);
+    });
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "label";
+    labelEl.textContent = label;
+
+    wrap.appendChild(input);
+    wrap.appendChild(labelEl);
+    return wrap;
+  }
+
+  document.getElementById("backBtn").addEventListener("click", () => {
+    selectedMonth = null;
+    render();
+  });
+
+  document.getElementById("prevBtn").addEventListener("click", () => {
+    if (selectedMonth === null) {
+      currentYear -= 1;
+    } else {
+      selectedMonth -= 1;
+      if (selectedMonth < 0) { selectedMonth = 11; currentYear -= 1; }
+    }
+    render();
+  });
+
+  document.getElementById("nextBtn").addEventListener("click", () => {
+    if (selectedMonth === null) {
+      currentYear += 1;
+    } else {
+      selectedMonth += 1;
+      if (selectedMonth > 11) { selectedMonth = 0; currentYear += 1; }
+    }
+    render();
+  });
+
+  render();
+</script>
+
+</body>
+</html>
